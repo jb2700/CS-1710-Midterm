@@ -34,10 +34,6 @@ pred SequentialExecution {
   }
 }
 
-pred ThreadIDsUnique {
-  // TODO
-}
-
 pred ValidFirstState {
   no prev : State | Main.next[prev] = Main.firstState
   no prev : Instr | Main.next_program_instr[prev] = Main.firstInstr
@@ -75,6 +71,52 @@ run {
   // DeadlockFree
   StarvationFree
   #Thread > 2
+} for exactly 10 State, exactly 6 Instr for { 
+  next is linear
+  next_program_instr is linear 
+}
+
+sig Lock {
+  lock_instr: one Instr,
+  unlock_instr: one Instr,
+  holder: pfunc State -> Thread // the holder of this mutex on a given step
+}
+
+pred ValidLockInstrs {
+  // They must be unique
+  all disj l1: Lock, l2: Lock | {
+    l1.lock_instr != l2.lock_instr
+    l1.unlock_instr != l2.unlock_instr
+  }
+
+  // TODO: make sure unlock is after lock
+  all l: Lock | {
+     Main.next_program_instr[Main.next_program_instr[l.lock_instr]] = l.unlock_instr
+  }
+}
+
+// only one thread gets the lock, and only if it's unlocked
+pred GettingLock {
+  all l: Lock, t: Thread, s: State | {
+    // if this thread is on my lock instruction...
+    t.next_instr[s] = l.lock_instr implies {
+        t.blocked[s] = True iff {
+          l.holder[Main.next[s]] != t
+        }
+    }
+  }
+}
+
+run {
+  ValidFirstState
+  SequentialExecution
+  GettingLock
+  ValidLockInstrs
+  MutualExclusion[Main.next_program_instr[Main.firstInstr]]
+  // DeadlockFree
+  StarvationFree
+  #Thread > 2
+  #Lock > 0
 } for exactly 10 State, exactly 6 Instr for { 
   next is linear
   next_program_instr is linear 
