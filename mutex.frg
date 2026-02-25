@@ -49,6 +49,7 @@ pred DeadlockFree {
 }
 
 pred StarvationFree {
+  // For all instructions, all threads will eventually get there...
   all instr: Instr, t: Thread | {
     some s: State | {
       t.next_instr[s] = instr
@@ -64,23 +65,13 @@ pred MutualExclusion[instr: Instr] {
   }
 }
 
-run {
-  ValidFirstState
-  SequentialExecution
-  MutualExclusion[Main.next_program_instr[Main.firstInstr]]
-  // DeadlockFree
-  StarvationFree
-  #Thread > 2
-} for exactly 10 State, exactly 6 Instr for { 
-  next is linear
-  next_program_instr is linear 
-}
-
 sig Lock {
   lock_instr: one Instr,
   unlock_instr: one Instr,
   holder: pfunc State -> Thread // the holder of this mutex on a given step
 }
+
+
 
 pred ValidLockInstrs {
   // They must be unique
@@ -95,24 +86,53 @@ pred ValidLockInstrs {
   }
 }
 
+// TODO: add a holding lock condition that the lock is held throughout critical section
 // only one thread gets the lock, and only if it's unlocked
 pred GettingLock {
   all l: Lock, t: Thread, s: State | {
     // if this thread is on my lock instruction...
     t.next_instr[s] = l.lock_instr implies {
-        t.blocked[s] = True iff {
-          l.holder[Main.next[s]] != t
-        }
+        // if i'm not the holder of the mutex in the next step, I must block
+        l.holder[Main.next[s]] != t iff t.blocked[s] = True
     }
   }
 }
 
-run {
+// TODO: check this
+pred HoldingLock {
+  all l: Lock, t: Thread, s: State | {
+    // if i currently hold the lock
+    l.holder[s] = t implies {
+      // i only won't hold it in the next state if I am on the unlock instruction next
+      l.holder[Main.next[s]] != t iff t.next_instr[Main.next[s]] = l.unlock_instr
+    }
+  }
+}
+
+pred Wellformed {
   ValidFirstState
   SequentialExecution
   GettingLock
   ValidLockInstrs
-  MutualExclusion[Main.next_program_instr[Main.firstInstr]]
+  HoldingLock
+}
+
+run {
+  Wellformed
+  MutualExclusion[Main.next_program_instr[Main.firstInstr]] // enforce mutual exclusion on instr1
+  // DeadlockFree
+  StarvationFree
+  #Thread > 2
+} for exactly 10 State, exactly 6 Instr for { 
+  next is linear
+  next_program_instr is linear 
+}
+
+// if its wellformed and theres a lock on instr1 that always ensures mutual exclusion on instr1
+
+run {
+  Wellformed
+  MutualExclusion[Main.next_program_instr[Main.firstInstr]] // enforce mutual exclusion on instr1
   // DeadlockFree
   StarvationFree
   #Thread > 2
@@ -121,3 +141,42 @@ run {
   next is linear
   next_program_instr is linear 
 }
+
+test suite for Wellformed {
+  test expect {
+    lock_around_instr_implies_mutex: {
+      Wellformed implies {
+        all i: Instr | {
+          {
+            // if we're not the first instruction
+            i != Main.firstInstr
+            // and there's some lock protecting this instruction
+            some l: Lock | {
+              Main.next_program_instr[l.lock_instr] = i
+              l.unlock_instr = Main.next_program_instr[i]
+            }
+          } implies {
+            // we should have mutual exclusion
+            MutualExclusion[i]
+          }
+        }
+      }
+    } for {
+      next is linear
+      next_program_instr is linear 
+    } is checked
+  }
+}
+
+// test suite for Wellformed {
+//   test expect {
+//     mutex_still_deadlock_free: {
+//       Wellformed implies {
+//         DeadlockFree
+//       }
+//     } for 100 State, 10 Instr for {
+//       next is linear
+//       next_program_instr is linear 
+//     } is checked
+//   }
+// }
