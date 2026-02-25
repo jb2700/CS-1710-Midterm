@@ -1,0 +1,16 @@
+constraints:
+  - orientation:
+      selector: right
+      directions:
+        - right
+        - below
+  - orientation:
+      selector: left
+      directions:
+        - left
+        - below
+
+directives:
+  - attribute:
+      field: key
+  - flag: hideDisconnectedBuiltIns
