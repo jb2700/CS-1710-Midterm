@@ -42,8 +42,10 @@ pred ValidFirstState {
 pred DeadlockFree {
   // For all instructions, some thread will eventually get there...
   all instr: Instr | {
-    some t: Thread, s: State, s2: State | {
-      t.next_instr[s] = instr
+    #Thread > 0 implies {
+      some t: Thread, s: State, s2: State | {
+        t.next_instr[s] = instr
+      }
     }
   }
 }
@@ -93,7 +95,7 @@ pred GettingLock {
     // if this thread is on my lock instruction...
     t.next_instr[s] = l.lock_instr implies {
         // if i'm not the holder of the mutex in the next step, I must block
-        l.holder[Main.next[s]] != t iff t.blocked[s] = True
+        l.holder[Main.next[s]] != t implies t.blocked[s] = True
     }
   }
 }
@@ -105,6 +107,36 @@ pred HoldingLock {
     l.holder[s] = t implies {
       // i only won't hold it in the next state if I am on the unlock instruction next
       l.holder[Main.next[s]] != t iff t.next_instr[Main.next[s]] = l.unlock_instr
+    }
+  }
+}
+
+pred LocksMustLetSomeoneWaitingIn {
+  all l: Lock, s: State | {
+    {
+      some Main.next[s] implies {
+        some t: Thread | { 
+          t.next_instr[s] = l.lock_instr 
+        } implies {
+          {
+            some l.holder[s]
+            l.holder[Main.next[s]] = l.holder[s]
+          } or {
+            some t: Thread | {
+              t.next_instr[s] = l.lock_instr 
+              l.holder[Main.next[s]] = t
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+pred ThreadsTryToGoWhenTheyCan {
+  all t: Thread, s: State | {
+    {not {some l: Lock | {t.next_instr[s] = l.lock_instr and l.holder[s] != t}}} implies {
+      t.blocked[s] = False
     }
   }
 }
@@ -168,15 +200,15 @@ test suite for Wellformed {
   }
 }
 
-// test suite for Wellformed {
-//   test expect {
-//     mutex_still_deadlock_free: {
-//       Wellformed implies {
-//         DeadlockFree
-//       }
-//     } for 100 State, 10 Instr for {
-//       next is linear
-//       next_program_instr is linear 
-//     } is checked
-//   }
-// }
+test suite for Wellformed {
+  test expect {
+    mutex_still_deadlock_free: {
+      {Wellformed and ThreadsTryToGoWhenTheyCan and LocksMustLetSomeoneWaitingIn} implies {
+        DeadlockFree
+      }
+    } for 100 State, 10 Instr for {
+      next is linear
+      next_program_instr is linear 
+    } is checked
+  }
+}
