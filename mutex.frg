@@ -73,8 +73,6 @@ sig Lock {
   holder: pfunc State -> Thread // the holder of this mutex on a given step
 }
 
-
-
 pred ValidLockInstrs {
   // They must be unique
   all disj l1: Lock, l2: Lock | {
@@ -82,13 +80,13 @@ pred ValidLockInstrs {
     l1.unlock_instr != l2.unlock_instr
   }
 
-  // TODO: make sure unlock is after lock
   all l: Lock | {
-     Main.next_program_instr[Main.next_program_instr[l.lock_instr]] = l.unlock_instr
+    // For now, they have to be exactly two instrs apart (critical section of length 1)
+    Main.next_program_instr[Main.next_program_instr[l.lock_instr]] = l.unlock_instr
+    not {some other: Lock | other.lock_instr = Main.next_program_instr[l.lock_instr]}
   }
 }
 
-// TODO: add a holding lock condition that the lock is held throughout critical section
 // only one thread gets the lock, and only if it's unlocked
 pred GettingLock {
   all l: Lock, t: Thread, s: State | {
@@ -100,7 +98,6 @@ pred GettingLock {
   }
 }
 
-// TODO: check this
 pred HoldingLock {
   all l: Lock, t: Thread, s: State | {
     // if i currently hold the lock
@@ -115,17 +112,11 @@ pred LocksMustLetSomeoneWaitingIn {
   all l: Lock, s: State | {
     {
       some Main.next[s] implies {
-        some t: Thread | { 
-          t.next_instr[s] = l.lock_instr 
+        {
+          some t: Thread | { t.next_instr[s] = l.lock_instr }
         } implies {
-          {
-            some l.holder[s]
-            l.holder[Main.next[s]] = l.holder[s]
-          } or {
-            some t: Thread | {
-              t.next_instr[s] = l.lock_instr 
-              l.holder[Main.next[s]] = t
-            }
+          some new: Thread | {
+            new.next_instr[Main.next[s]] = Main.next_program_instr[l.lock_instr]
           }
         }
       }
@@ -135,7 +126,13 @@ pred LocksMustLetSomeoneWaitingIn {
 
 pred ThreadsTryToGoWhenTheyCan {
   all t: Thread, s: State | {
-    {not {some l: Lock | {t.next_instr[s] = l.lock_instr and l.holder[s] != t}}} implies {
+    {
+      not {
+        some l: Lock | {
+          t.next_instr[s] = l.lock_instr and l.holder[s] != t
+        }
+      }
+    } implies {
       t.blocked[s] = False
     }
   }
@@ -165,7 +162,6 @@ run {
 run {
   Wellformed
   MutualExclusion[Main.next_program_instr[Main.firstInstr]] // enforce mutual exclusion on instr1
-  // DeadlockFree
   StarvationFree
   #Thread > 2
   #Lock > 0
@@ -203,10 +199,30 @@ test suite for Wellformed {
 test suite for Wellformed {
   test expect {
     mutex_still_deadlock_free: {
-      {Wellformed and ThreadsTryToGoWhenTheyCan and LocksMustLetSomeoneWaitingIn} implies {
+      {
+        Wellformed 
+        ThreadsTryToGoWhenTheyCan 
+        LocksMustLetSomeoneWaitingIn
+      } implies {
         DeadlockFree
       }
-    } for 100 State, 10 Instr for {
+    } for {
+      next is linear
+      next_program_instr is linear 
+    } is checked
+
+    // Note: this test can take a while (~30 sec on my machine), be patient
+    mutex_still_starvation_free: {
+      {
+        Wellformed 
+        ThreadsTryToGoWhenTheyCan 
+        LocksMustLetSomeoneWaitingIn
+      } implies {
+        StarvationFree
+      }
+      // Need to constrain the number of instrs * threads vs number of states
+      // (for the "given enough time" part of starvation freedom)
+    } for exactly 100 State, 10 Instr, 5 Thread for {
       next is linear
       next_program_instr is linear 
     } is checked
