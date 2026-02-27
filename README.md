@@ -25,6 +25,15 @@ HoldingLock: It ensures the lock holder keeps ownership until they reach the unl
 Wellformed: This is just the previous predicates all in one predicate so that I do not have to call each of the other ones individually. 
 
 
-4. In the test statement, we have the check described earlier in section 2 where we prove that mutex locks means mutual exclusion. 
+4. Our testing can be divided into tests for our individual predicates, and tests that aimed to prove something interesting about our domain area.
+
+In terms of proofs about our domain area, `lock_around_instr_implies_mutex` proves that, in our model, having a lock around an instruction means that there will always be mutual exclusion on that instruction between threads.
+`mutex_still_deadlock_free` proves that, in our model, no matter how many locks you have nor their configuration, the program will still be deadlock free (as long as threads always try to progress and locks will always let in a waiting thread if empty). 
+This only really works because of the simplifications of our model (namely that critical sections must only be one instruction), but within this model programs must be deadlock free.
+`mutex_still_starvation_free` does a similar thing for starvation freedom. 
+An interesting note is that, here, we must restrict the number of `Instr`s and `Thread`s to be within a reasonable range of the number of `State`s so that there's sufficient time for the threads to all get through the program.
+
+Our basic tests do a variety of things, mostly just double checking properties of our predicates and ensuring that common sense identities hold.
+One interesting example is `starvation_free_implies_deadlock_free` which ensures that starvation freedom is validly a subset of deadlock freedom!
 
 5. We documented our mutex and test file well. 
