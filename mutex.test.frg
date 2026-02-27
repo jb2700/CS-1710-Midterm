@@ -2,6 +2,67 @@
 
 open "mutex.frg"
 
+// INTERESTING PROPERTY TESTS
+
+// Safety Properties
+test expect {
+  lock_around_instr_implies_mutex: {
+    Wellformed implies {
+      all i: Instr | {
+        {
+          // if we're not the first instruction
+          i != Main.firstInstr
+          // and there's some lock protecting this instruction
+          some l: Lock | {
+            Main.next_program_instr[l.lock_instr] = i
+            l.unlock_instr = Main.next_program_instr[i]
+          }
+        } implies {
+          // we should have mutual exclusion
+          MutualExclusion[i]
+        }
+      }
+    }
+  } for {
+    next is linear
+    next_program_instr is linear 
+  } is checked
+}
+
+// Liveness Properties
+test expect {
+  mutex_still_deadlock_free: {
+    {
+      Wellformed 
+      ThreadsTryToGoWhenTheyCan 
+      LocksMustLetSomeoneWaitingIn
+    } implies {
+      DeadlockFree
+    }
+  } for {
+    next is linear
+    next_program_instr is linear 
+  } is checked
+
+  // Note: this test can take a while (~30 sec on my machine), be patient
+  mutex_still_starvation_free: {
+    {
+      Wellformed 
+      ThreadsTryToGoWhenTheyCan 
+      LocksMustLetSomeoneWaitingIn
+    } implies {
+      StarvationFree
+    }
+    // Need to constrain the number of instrs * threads vs number of states
+    // (for the "given enough time" part of starvation freedom)
+  } for exactly 100 State, 10 Instr, 5 Thread for {
+    next is linear
+    next_program_instr is linear 
+  } is checked
+}
+
+// BASIC TESTS
+
 test expect {
   can_execute_sequentially: {
     SequentialExecution
@@ -20,11 +81,6 @@ test expect {
     some Thread
     some Instr
   } is sat
-
-  starvation_implies_no_deadlock: {
-    StarvationFree
-    not DeadlockFree
-  } is unsat
 
   can_overlap_without_mutex: {
     some t1, t2: Thread, s: State, i: Instr | {
